@@ -3,7 +3,9 @@ const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
 //const encrypt = require("mongoose-encryption"); keeping for memes
-const md5 = require("md5");
+//const md5 = require("md5"); keeping for memes
+const bcrypt = require("bcrypt");
+const saltRounds = 10;
 
 const app = express();
 
@@ -50,16 +52,20 @@ app.get("/register", (req, res) => {
 app.post("/register", (req, res) => {
     const { username, password } = req.body;
 
-    const newUser = new User({
-        email: username,
-        password: md5(password)
-    });
-
-    newUser.save((err) => {
+    bcrypt.hash(password, saltRounds, (err, hash) => {
         if (!err) {
-            res.render("secrets");
-        } else {
-            res.send(err);
+            const newUser = new User({
+                email: username,
+                password: hash
+            });
+        
+            newUser.save((err) => {
+                if (!err) {
+                    res.render("secrets");
+                } else {
+                    res.send(err);
+                }
+            });
         }
     });
 });
@@ -72,31 +78,15 @@ app.post("/login", (req, res) => {
             res.send(err);
         } else {
             if (user) {
-                if (user.password === md5(password)) {
-                    res.render("secrets");
-                }
+                bcrypt.compare(password, user.password, (err, result) => {
+                    if (result === true) {
+                        res.render("secrets");
+                    }
+                });
             }
         }
     });
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
