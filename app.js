@@ -52,7 +52,8 @@ mongoose.set("useCreateIndex", true);
 const userSchema = new mongoose.Schema({
     email: String,
     password: String,
-    googleId: String // NEEDED FOR OAUTH
+    googleId: String, // NEEDED FOR OAUTH
+    secret: String
 });
 
 userSchema.plugin(passportLocalMongoose); // 4. use PLUGIN in SCHEMA
@@ -118,8 +119,20 @@ app.get("/register", (req, res) => {
 });
 
 app.get("/secrets", (req, res) => {
+    User.find({ secret: { $ne: null } }, (err, users) => {
+        if (err) {
+            console.log(err);
+        } else {
+            if (users) {
+                res.render("secrets", { usersWithSecrets: users });
+            }
+        }
+    });
+});
+
+app.get("/submit", (req, res) => {
     if (req.isAuthenticated()) {
-        res.render("secrets");
+        res.render("submit");
     } else {
         res.redirect("/login");
     }
@@ -128,6 +141,25 @@ app.get("/secrets", (req, res) => {
 app.get("/logout", (req, res) => {
     req.logout();
     res.redirect("/");
+});
+
+app.post("/submit", (req, res) => {
+    const { secret } = req.body;
+
+    User.findById(req.user.id, (err, user) => {
+        if (err) {
+            console.log(err);
+        } else {
+            if (user) {
+                user.secret = secret;
+                user.save((err) => {
+                    if (!err) {
+                        res.redirect("/secrets");
+                    }
+                });
+            }
+        }
+    });
 });
 
 app.post("/register", (req, res) => {
