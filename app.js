@@ -2,10 +2,11 @@ require('dotenv').config();
 const express = require("express");
 const ejs = require("ejs");
 const mongoose = require("mongoose");
-//const encrypt = require("mongoose-encryption"); keeping for memes
-//const md5 = require("md5"); keeping for memes
-const bcrypt = require("bcrypt");
-const saltRounds = 10;
+
+// 1. TAKE NOTE OF ORDER
+const session = require("express-session");
+const passport = require("passport");
+const passportLocalMongoose = require("passport-local-mongoose");
 
 const app = express();
 
@@ -14,6 +15,19 @@ const PORT = process.env.PORT || 3000;
 app.use(express.static("public"));
 app.set("view engine", "ejs");
 app.use(express.urlencoded({ extended: true }));
+
+// 2. Use express session PLACE HERERERERERERE LAST LAST LAST LAST
+// Initialized session
+app.use(session({
+    secret: "ThisIsTHeBestSecretEverrrrrrrrr",
+    resave: false,
+    saveUninitialized: false
+}));
+
+// 3. Initialize passport AFTER express session
+// THEN USE SESSION
+app.use(passport.initialize());
+app.use(passport.session());
 
 // Connection to DB
 const options = {
@@ -25,6 +39,8 @@ mongoose.connect("mongodb://localhost:27017/userDB", options, (err) => {
         console.log("Connected to MongoDB!");
     }
 });
+// 6. Fix deprecation warning if happens
+mongoose.set("useCreateIndex", true );
 
 // User Schema and Model
 const userSchema = new mongoose.Schema({
@@ -32,10 +48,14 @@ const userSchema = new mongoose.Schema({
     password: String
 });
 
-// userSchema.plugin(encrypt, { secret: process.env.SECRET, encryptedFields: ["password"] }); keeping for memes
+userSchema.plugin(passportLocalMongoose); // 4. use PLUGIN in SCHEMA
 
 const User = mongoose.model("User", userSchema);
 
+// 5. Create local login strategy and to serialize and deserialize users
+passport.use(User.createStrategy());
+passport.serializeUser(User.serializeUser());
+passport.deserializeUser(User.deserializeUser());
 
 app.get("/", (req, res) => {
     res.render("home");
@@ -49,22 +69,29 @@ app.get("/register", (req, res) => {
     res.render("register");
 });
 
+app.get("/secrets", (req, res) => {
+    if (req.isAuthenticated()) {
+        res.render("secrets");
+    } else {
+        res.redirect("/login");
+    }
+});
+
+app.get("/logout", (req, res) => {
+    req.logout();
+    res.redirect("/");
+});
+
 app.post("/register", (req, res) => {
     const { username, password } = req.body;
 
-    bcrypt.hash(password, saltRounds, (err, hash) => {
-        if (!err) {
-            const newUser = new User({
-                email: username,
-                password: hash
-            });
-        
-            newUser.save((err) => {
-                if (!err) {
-                    res.render("secrets");
-                } else {
-                    res.send(err);
-                }
+    User.register({ username: username }, password, (err, user) => {
+        if (err) {
+            console.error(err);
+            res.redirect("/register");
+        } else {
+            passport.authenticate("local")(req, res, () => {
+                res.redirect("/secrets");
             });
         }
     });
@@ -73,17 +100,18 @@ app.post("/register", (req, res) => {
 app.post("/login", (req, res) => {
     const { username, password } = req.body;
 
-    User.findOne({ email: username }, (err, user) => {
+    const user = new User({
+        username: username,
+        password: password
+    });
+
+    req.login(user, (err) => {
         if (err) {
-            res.send(err);
+            console.log(err);
         } else {
-            if (user) {
-                bcrypt.compare(password, user.password, (err, result) => {
-                    if (result === true) {
-                        res.render("secrets");
-                    }
-                });
-            }
+            passport.authenticate("local")(req, res, () => {
+                res.redirect("/secrets");
+            });
         }
     });
 });
